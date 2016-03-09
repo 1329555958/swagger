@@ -1,0 +1,210 @@
+swagger: "2.0"
+info:
+  version: "0.0.1"
+  title: 星驿付交互接口
+  description: |
+    <pre>信息说明</pre>
+    * auth_id:
+    所有的接口调用时，报文头中都必须包含此值.不同的接口可能不同，这个是对接口进行限量节流及统计使用;具体值由接口提供方提供
+    * 加密算法:
+    与金钱相关的操作接口都会进行加密,将参数对象转换为json字符串加上平台编号进行加密;
+    加密值在报文头中通过cryptograph传递
+    
+    
+# during dev, should point to your local machine
+host: localhost:10010
+# basePath prefixes all resource paths 
+basePath: /
+# 
+schemes:
+  # tip: remove http to make production-grade
+  - http
+# format of bodies a client can send (Content-Type)
+consumes:
+  - application/json
+# format of the responses to the client (Accepts)
+produces:
+  - application/json
+paths:
+  /index:
+    get:
+      tags:
+        - 授权相关 
+      summary: >
+        用户登录跳转
+      description: 用户单点登录后携带token跳转至此,根据token信息去验证是否已经登录
+      parameters:
+        - name: token
+          in: formData
+          description: 用户标识
+          required: true
+          type: string
+          
+          
+      responses:
+        "200":
+          description: 理财平台首页
+          
+        # responses may fall through to errors
+        default:
+          description: 错误信息页
+
+  /account/deposit:
+      post:
+        tags:
+          - 账户相关
+        summary: 充值
+        description: 充值接口
+        parameters:
+          - name: cryptograph
+            in: header
+            description: 根据参数值加密后的密文，加密算法参见文档头部描述
+            required: true
+            type: string
+          
+          - name: orderId
+            in: formData
+            description: 唯一的订单编号
+            required: true
+            type: string
+          
+          - name: memeberId
+            in: formData
+            description: 星驿付内部会员编号
+            required: true
+            type: string
+          
+          - name: amount
+            in: formData
+            description: 充值金额,BigDecimal
+            required: true
+            type: string
+            
+          - name: url
+            in: formData
+            description: 异步通知接口回调地址
+            required: true
+            type: string
+            
+        responses:
+          200:
+            description: 充值成功
+            schema:
+              type: object
+              properties:
+                orderId:
+                  type: string
+                  description: 维金订单编号,与请求参数中订单编号不同
+            
+          default:
+            description: 响应status为200以外的情况，处理失败
+            schema:
+              $ref: '#/definitions/ErrorResponse'
+    
+  /account/redeem/callback:
+      post:
+        summary: 提现回调
+        description: 提现成功之后的回调地址
+        parameters:
+          - name: cryptograph
+            in: header
+            description: 根据参数值加密后的密文，加密算法参见文档头部描述
+            required: true
+            type: string
+          
+          - name: orderId
+            in: formData
+            description: 星驿付的订单编号
+            required: true
+            type: string
+          
+          - name: originOrderId
+            in: formData
+            description: 维金发起时的订单号
+            required: true
+            type: string
+            
+          - name: code
+            in: formData
+            description: 0 表示成功,其他表示失败,并在message中给出错误信息
+            required: true
+            type: integer
+            
+          - name: message
+            in: formData
+            description: 提现未成功的原因,如果成功此字段为空
+            required: false
+            type: string
+        responses:
+          200:
+            description: 成功接收回调
+          default:
+            description: 回调失败
+            schema:
+              $ref: '#/definitions/ErrorResponse'
+      
+        
+# complex objects have schema definitions
+definitions:
+  Meta:
+    type: object
+    required:
+      - total
+      - pageNo
+      - pageSize
+    properties:
+      total:
+        type: integer
+        format: int64
+        description: 符合条件的总记录数
+      pageNo:
+        type: integer
+        description: 当前页码
+      pageSize:
+        type: integer
+        description: 每页记录数
+  OrderInfo:
+    type: object
+    required:
+      - orderId
+      - memberId
+      - amount
+    properties:
+      orderId:
+        type: string
+        description: 唯一的订单编号.
+      memberId:
+        type: string
+        description: 星驿付内部会员编号
+      amount:
+        type: number
+        description: 充值金额,BigDecimal
+        
+  ErrorResponse:
+    type: object
+    required:
+      - status
+      - reason
+    properties:
+      status:
+        type: integer
+        description: 响应状态码
+      reason:
+        type: string
+        description: 错误描述信息
+  UserInfo:
+    type: object
+    required:
+      - userId
+      - userName
+    properties:
+      userId:
+        type: string
+        description: 用户标识
+      userName:
+        type: string
+        description: 用于显示的用户名称
+      email:
+        type: string
+        description: 邮箱地址
+      
