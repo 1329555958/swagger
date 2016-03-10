@@ -103,7 +103,6 @@ paths:
             in: body
             description: 订单信息
             required: true
-            type: object
             schema:
               $ref: '#/definitions/OrderInfo'
             
@@ -136,7 +135,6 @@ paths:
             in: body
             description: 订单信息
             required: true
-            type: object
             schema:
               $ref: '#/definitions/OrderInfo'
             
@@ -173,7 +171,7 @@ paths:
             description: 接口调用成功
             schema:
               $ref: '#/definitions/UserInfo'
-          defaults:
+          default:
             description: 响应status为200以外的情况，处理失败
             schema:
               $ref: '#/definitions/ErrorResponse'
