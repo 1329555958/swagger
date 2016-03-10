@@ -4,12 +4,38 @@ info:
   title: 星驿付交互接口
   description: |
     <pre>信息说明</pre>
-    * auth_id:
+    * **auth_id:**
     所有的接口调用时，报文头中都必须包含此值.不同的接口可能不同，这个是对接口进行限量节流及统计使用;具体值由接口提供方提供
-    * 加密算法:
-    与金钱相关的操作接口都会进行加密,将参数对象转换为json字符串加上平台编号进行加密;
+    * **加密算法:**
+    与金钱相关的操作接口都会进行加密,将参数对象转换为json字符串加上平台编号(由维金提供)进行MD5加密生成32位字符串;
+    <br/>例如:
+    ```
+    参数对象为:
+    {orderId:"DEPOSIT00001",memberId:"1000001",amount:"100.00"}
+    则加密对象为:
+    {plat:"1234",params:{orderId:"DEPOSIT00001",memberId:"1000001",amount:"100.00"}}
+    则加密字符串为：(key按照字典顺序排列)
+    '{"params":{"amount":"100.00","memberId":"1000001","orderId":"DEPOSIT00001"},"plat":"1234"}'
+    则加密结果为：
+    6a3847e0fd480080a4f1d4ede61bc782
+    ```
     加密值在报文头中通过cryptograph传递
+    * **A方、B方:**
+    在本文档中A方代表维金,B方代表星驿付
+    * **订单编号:**
+    文档中出现的所有订单编号都需要具有唯一性;最大长度为50位,建议使用类型标识+UUID
+    * **金额:**
+    所有金额参数都为BigDecimal类型
+    * **重试机制:**
+    充值(转入)/提现(转出)接口中，接口提供方需要允许重试,同一订单只能被成功处理一次；接口调用方在得到失败响应之后可以继续重试，直到响应成功;
     
+    <pre>文档使用说明</pre>
+    * **数据模型查看方式**:
+    文档中展示数据的方式有两种，一种是展示数据类型的(模型结构),一种是展示数据描述及是否必须的，未标明optional的字段均为必须字段
+    * **接口调用说明**:
+    在文档中对应位置填入相应参数值，点击试一试即可查看响应结果及调用方式<br/>
+    <a href="images/GIF.gif">点此查看文档使用动画</a>
+
     
 # during dev, should point to your local machine
 host: localhost:10010
@@ -29,14 +55,20 @@ paths:
   /index:
     get:
       tags:
-        - 授权相关 
+        - 会员相关 
       summary: >
         用户登录跳转
-      description: 用户单点登录后携带token跳转至此,根据token信息去验证是否已经登录
+      description: B方用户单点登录后携带token跳转至此,A方根据token信息去验证此token是否有效;B方需提供验证接口
       parameters:
+        - name: auth_id
+          in: header
+          description: 认证编号,见文档头部信息说明
+          type: string
+          required: true
+
         - name: token
-          in: formData
-          description: 用户标识
+          in: query
+          description: 用户登录后在B方的有效标识
           required: true
           type: string
           
@@ -53,95 +85,99 @@ paths:
       post:
         tags:
           - 账户相关
-        summary: 充值
+        summary: 充值(转入)
         description: 充值接口
         parameters:
+          - name: auth_id
+            in: header
+            description: 认证编号,见文档头部信息说明
+            type: string
+            required: true
           - name: cryptograph
             in: header
-            description: 根据参数值加密后的密文，加密算法参见文档头部描述
+            description: 根据参数值加密后的密文，加密算法参见文档头部描述; 若响应失败B方可一直重试直到成功,A方会根据订单编号排重,同一订单号只会成功处理一次;
             required: true
             type: string
           
-          - name: orderId
-            in: formData
-            description: 唯一的订单编号
+          - name: OrderInfo
+            in: body
+            description: 订单信息
             required: true
-            type: string
-          
-          - name: memeberId
-            in: formData
-            description: 星驿付内部会员编号
-            required: true
-            type: string
-          
-          - name: amount
-            in: formData
-            description: 充值金额,BigDecimal
-            required: true
-            type: string
+            type: object
+            schema:
+              $ref: '#/definitions/OrderInfo'
             
-          - name: url
-            in: formData
-            description: 异步通知接口回调地址
-            required: true
-            type: string
             
         responses:
           200:
             description: 充值成功
             schema:
-              type: object
-              properties:
-                orderId:
-                  type: string
-                  description: 维金订单编号,与请求参数中订单编号不同
+              $ref: '#/definitions/OrderResponse'
             
           default:
             description: 响应status为200以外的情况，处理失败
             schema:
               $ref: '#/definitions/ErrorResponse'
     
-  /account/redeem/callback:
+  /account/redeem:
       post:
-        summary: 提现回调
-        description: 提现成功之后的回调地址
+        tags:
+          - B方提供
+        summary: 提现(转出)
+        description: 提现是A方发起,这个是A方账户与B方账户之间资金流动,不涉及第三方支付
         parameters:
           - name: cryptograph
             in: header
-            description: 根据参数值加密后的密文，加密算法参见文档头部描述
+            description: 根据参数值加密后的密文，加密算法参见文档头部描述;如响应失败,A方会一直重试,直到成功,B方要确保同一订单只会被成功处理一次;
             required: true
             type: string
           
-          - name: orderId
-            in: formData
-            description: 星驿付的订单编号
+          - name: OrderInfo
+            in: body
+            description: 订单信息
             required: true
-            type: string
-          
-          - name: originOrderId
-            in: formData
-            description: 维金发起时的订单号
-            required: true
-            type: string
+            type: object
+            schema:
+              $ref: '#/definitions/OrderInfo'
             
-          - name: code
-            in: formData
-            description: 0 表示成功,其他表示失败,并在message中给出错误信息
-            required: true
-            type: integer
-            
-          - name: message
-            in: formData
-            description: 提现未成功的原因,如果成功此字段为空
-            required: false
-            type: string
         responses:
           200:
-            description: 成功接收回调
+            description: 提现成功
+            schema:
+              $ref: '#/definitions/OrderResponse'
+            
           default:
-            description: 回调失败
+            description: 响应status为200以外的情况，处理失败
             schema:
               $ref: '#/definitions/ErrorResponse'
+  /member/token/{token}:
+      get:
+        tags:
+          - B方提供
+        summary: sso校验及会员信息获取
+        description: 通过此接口进行单点登录验证,token是B方跳转时传递过来的参数,A方根据此token向B方发起用户身份校验;根据参数决定是否返回用户基本信息
+        parameters:
+          - name: token
+            description: B方用户身份标识
+            in: path
+            type: string
+            required: true
+          - name: needInfo
+            description: 是否返回B方用户的基本信息,0表示不需要,1表示需要返回
+            in: query
+            type: integer
+            required: true
+            
+        responses:
+          200:
+            description: 接口调用成功
+            schema:
+              $ref: '#/definitions/UserInfo'
+          defaults:
+            description: 响应status为200以外的情况，处理失败
+            schema:
+              $ref: '#/definitions/ErrorResponse'
+                
       
         
 # complex objects have schema definitions
@@ -175,10 +211,24 @@ definitions:
         description: 唯一的订单编号.
       memberId:
         type: string
-        description: 星驿付内部会员编号
+        description: 会员编号
       amount:
         type: number
-        description: 充值金额,BigDecimal
+        description: 充值金额
+        
+  OrderResponse:
+    type: object
+    required:
+      - orderId
+      - originOrderId
+    properties:
+      orderId:
+        type: string
+        description: 接口实现方处理后的订单编号
+      originOrderId:
+        type: string
+        description: 原始订单号,接口调用方调用时传递的订单编号
+
         
   ErrorResponse:
     type: object
@@ -191,20 +241,30 @@ definitions:
         description: 响应状态码
       reason:
         type: string
-        description: 错误描述信息
+        description: 与人友好的错误描述信息
   UserInfo:
     type: object
     required:
-      - userId
-      - userName
+      - memberId
+      - memberName
     properties:
-      userId:
+      memberId:
         type: string
-        description: 用户标识
-      userName:
+        description: 会员编号
+      memberName:
         type: string
-        description: 用于显示的用户名称
+        description: 用于显示的会员昵称
       email:
         type: string
         description: 邮箱地址
+      telphone:
+        type: string
+        description: 手机号
+      realName:
+        type: string
+        description: 真实姓名
+      idNumber:
+        type: string
+        description: 身份证编号
+      
       
