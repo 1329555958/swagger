@@ -7,7 +7,7 @@ info:
     * **auth_id:**
     所有的接口调用时，报文头中都必须包含此值.不同的接口可能不同，这个是对接口进行限量节流及统计使用;具体值由接口提供方提供
     * **加密算法:**
-    与金钱相关的操作接口都会进行加密,将参数对象转换为json字符串加上平台编号(由维金提供)进行MD5加密生成32位字符串;
+    与金钱相关的操作接口都会进行加密,将参数对象转换为json字符串加上平台编号(由维金提供)进行MD5加密生成32位字符串;若加密接口中有非必填字段且不传递具体值时，在加密时使用空字符串("")代替;
     <br/>例如:
     ```
     参数对象为:
@@ -19,15 +19,21 @@ info:
     则加密结果为：
     6a3847e0fd480080a4f1d4ede61bc782
     ```
-    加密值在报文头中通过cryptograph传递
+    密文在报文头中通过 **cryptograph** 传递
     * **A方、B方:**
     在本文档中A方代表维金,B方代表星驿付
     * **订单编号:**
     文档中出现的所有订单编号都需要具有唯一性;最大长度为50位,建议使用类型标识+UUID
     * **金额:**
-    所有金额参数都为BigDecimal类型
+    所有金额参数都为BigDecimal类型(两位小数)
+    * **响应结果:**
+    响应状态码为200的响应是成功响应，其他状态码均为失败响应,在失败响应中需在字段reason中提供响应失败描述信息;
     * **重试机制:**
-    充值(转入)/提现(转出)接口中，接口提供方需要允许重试,同一订单只能被成功处理一次；接口调用方在得到失败响应之后可以继续重试，直到响应成功;
+    允许重试的接口中，接口提供方需要允许重试,同一订单只能被成功处理一次；接口调用方在得到失败响应之后可以继续重试，直到响应成功;
+    * **回调机制:**
+    不能事实响应的接口，在调用时需传递回调地址，待处理完成后接口实现方需将处理结果通过回调地址发送给接口调用方;
+    * **B方提供:**
+    此文档中出现的B方提供接口,B方需按照接口定义来实现接口，但是路径可以由B方指定;
     
     <pre>文档使用说明</pre>
     * **数据模型查看方式**:
@@ -80,19 +86,148 @@ paths:
         # responses may fall through to errors
         default:
           description: 错误信息页
+  /account/me:
+    get:
+      tags:
+        - 会员相关 
+      summary: >
+        用户个人中心
+      description: B方用户单点登录后携带token跳转至此,A方根据token信息去验证此token是否有效;
+      parameters:
+        - name: auth_id
+          in: header
+          description: 认证编号,见文档头部信息说明
+          type: string
+          required: true
 
+        - name: token
+          in: query
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: string
+          
+          
+      responses:
+        "200":
+          description: 用户个人中心页面
+          
+        # responses may fall through to errors
+        default:
+          description: 错误信息页
+          
   /account/deposit:
+    get:
+      tags:
+        - 会员相关 
+      summary: >
+        账户充值页面
+      description: B方用户单点登录后携带token跳转至此,A方根据token信息去验证此token是否有效;
+      parameters:
+        - name: auth_id
+          in: header
+          description: 认证编号,见文档头部信息说明
+          type: string
+          required: true
+
+        - name: token
+          in: query
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: string
+          
+      responses:
+        "200":
+          description: 充值页面
+          
+        # responses may fall through to errors
+        default:
+          description: 错误信息页
+          
+  /account/overview:
+    get:
+      tags:
+        - 账户相关 
+        
+      summary: >
+        账户总览
+      description: 查询账户资产总览信息
+      parameters:
+        - name: auth_id
+          in: header
+          description: 认证编号,见文档头部信息说明
+          type: string
+          required: true
+
+        - name: token
+          in: query
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: string
+          
+      responses:
+        "200":
+          description: 成功响应
+          schema:
+            type: object
+            required:
+              - totalAssets
+              - balance
+              - yesterdayProfit
+            properties:
+              totalAssets:
+                description: BigDecimal类型 总资产
+                type: number
+              balance:
+                description: 账户余额
+                type: number
+              yesterdayProfit:
+                description: 昨日收益
+                type: number
+        # responses may fall through to errors
+        default:
+          description: 响应失败 
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+            
+  /account/callback/deposit:
       post:
         tags:
           - 账户相关
-        summary: 充值(转入)
-        description: 充值接口
+        summary: 充值(转入)回调
+        description: A方发起充值时传递回调地址,待B方处理完成后将处理结果通过回调地址发送给A方,若B方回调时没有收到成功响应，需重试直至成功响应;
         parameters:
-          - name: auth_id
+
+          - name: cryptograph
             in: header
-            description: 认证编号,见文档头部信息说明
-            type: string
+            description: 根据参数值加密后的密文，加密算法参见文档头部描述; 若响应失败B方可一直重试直到成功,A方会根据订单编号排重,同一订单号只会成功处理一次;
             required: true
+            type: string
+          
+          - name: OrderInfo
+            in: body
+            description: 订单信息
+            required: true
+            schema:
+              $ref: '#/definitions/OrderResponse'
+            
+            
+        responses:
+          200:
+            description: 回调成功
+            
+          default:
+            description: 响应status为200以外的情况，处理失败
+            schema:
+              $ref: '#/definitions/ErrorResponse'
+          
+  /b/account/deposit:
+      post:
+        tags:
+          - B方提供
+        summary: 充值(转入)
+        description: 充值接口;B方提供,A方发起充值时传递回调地址,待B方处理完成后将处理结果通过回调地址发送给A方,若B方回调时没有收到成功响应，需重试直至成功响应;
+        parameters:
+
           - name: cryptograph
             in: header
             description: 根据参数值加密后的密文，加密算法参见文档头部描述; 若响应失败B方可一直重试直到成功,A方会根据订单编号排重,同一订单号只会成功处理一次;
@@ -118,12 +253,12 @@ paths:
             schema:
               $ref: '#/definitions/ErrorResponse'
     
-  /account/redeem:
+  /b/account/redeem:
       post:
         tags:
           - B方提供
         summary: 提现(转出)
-        description: 提现是A方发起,这个是A方账户与B方账户之间资金流动,不涉及第三方支付
+        description: 提现是A方发起,这个是A方账户与B方账户之间资金流动,不涉及第三方支付;
         parameters:
           - name: cryptograph
             in: header
@@ -148,7 +283,7 @@ paths:
             description: 响应status为200以外的情况，处理失败
             schema:
               $ref: '#/definitions/ErrorResponse'
-  /member/token/{token}:
+  /b/member/token/{token}:
       get:
         tags:
           - B方提供
@@ -213,12 +348,16 @@ definitions:
       amount:
         type: number
         description: 充值金额
+      notifyUrl:
+        type: string
+        description: 回调地址,只有需要回调的接口才需要此参数,若不需要此参数的接口加密时使用空值("")
         
   OrderResponse:
     type: object
     required:
       - orderId
       - originOrderId
+      - orderTime
     properties:
       orderId:
         type: string
@@ -226,6 +365,9 @@ definitions:
       originOrderId:
         type: string
         description: 原始订单号,接口调用方调用时传递的订单编号
+      orderTime:
+        type: number
+        description: 订单处理完成时间,long类型的毫秒数
 
         
   ErrorResponse:
