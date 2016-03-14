@@ -7,7 +7,7 @@ info:
     * **auth_id:**
     所有的接口调用时，报文头中都必须包含此值.不同的接口可能不同，这个是对接口进行限量节流及统计使用;具体值由接口提供方提供
     * **加密算法:**
-    与金钱相关的操作接口都会进行加密,将参数对象转换为json字符串加上平台编号(由维金提供)进行MD5加密生成32位字符串;若加密接口中有非必填字段且不传递具体值时，在加密时使用空字符串("")代替;
+    加密时,将**报文体参数**(auth_id是在报文头中传递,加密内容无需包含此参数)对象转换为json字符串加上平台编号(由维金提供)进行sha1加密生成40位小写字符串;若加密接口中有非必填字段且不传递具体值时，在加密时使用空字符串("")代替;
     <br/>例如:
     ```
     参数对象为:
@@ -17,7 +17,7 @@ info:
     则加密字符串为：(key按照字典顺序排列)
     '{"params":{"amount":"100.00","memberId":"1000001","orderId":"DEPOSIT00001"},"plat":"1234"}'
     则加密结果为：
-    6a3847e0fd480080a4f1d4ede61bc782
+    1eff6ba75a9b928cd8988dafb8ccf5cfa9cfe4f2
     ```
     密文在报文头中通过 **cryptograph** 传递
     * **A方、B方:**
@@ -59,7 +59,7 @@ produces:
   - application/json
 paths:
   /index:
-    get:
+    post:
       tags:
         - 会员相关 
       summary: >
@@ -71,12 +71,25 @@ paths:
           description: 认证编号,见文档头部信息说明
           type: string
           required: true
-
-        - name: token
-          in: query
-          description: 用户登录后在B方的有效标识
+          
+        - name: cryptograph
+          in: header
+          description: 加密后的密文，加密算法见报文头
           required: true
           type: string
+
+        - name: token
+          in: body
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: object
+          schema:
+            required:
+              - token
+            properties:
+              token:
+                type: string
+                description: 用户登录后在B方的有效标识
           
           
       responses:
@@ -87,7 +100,7 @@ paths:
         default:
           description: 错误信息页
   /account/me:
-    get:
+    post:
       tags:
         - 会员相关 
       summary: >
@@ -99,12 +112,25 @@ paths:
           description: 认证编号,见文档头部信息说明
           type: string
           required: true
-
-        - name: token
-          in: query
-          description: 用户登录后在B方的有效标识
+        - name: cryptograph
+          in: header
+          description: 加密后的密文，加密算法见报文头
           required: true
           type: string
+          
+        - name: token
+          in: body
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: object
+          schema:
+            required:
+              - token
+            properties:
+              token:
+                type: string
+                description: 用户登录后在B方的有效标识
+          
           
           
       responses:
@@ -116,7 +142,7 @@ paths:
           description: 错误信息页
           
   /account/deposit:
-    get:
+    post:
       tags:
         - 会员相关 
       summary: >
@@ -128,12 +154,25 @@ paths:
           description: 认证编号,见文档头部信息说明
           type: string
           required: true
-
-        - name: token
-          in: query
-          description: 用户登录后在B方的有效标识
+          
+        - name: cryptograph
+          in: header
+          description: 加密后的密文，加密算法见报文头
           required: true
           type: string
+          
+        - name: token
+          in: body
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: object
+          schema:
+            required:
+              - token
+            properties:
+              token:
+                type: string
+                description: 用户登录后在B方的有效标识
           
       responses:
         "200":
@@ -144,7 +183,7 @@ paths:
           description: 错误信息页
           
   /account/overview:
-    get:
+    post:
       tags:
         - 账户相关 
         
@@ -157,12 +196,26 @@ paths:
           description: 认证编号,见文档头部信息说明
           type: string
           required: true
-
-        - name: token
-          in: query
-          description: 用户登录后在B方的有效标识
+          
+        - name: cryptograph
+          in: header
+          description: 加密后的密文，加密算法见报文头
           required: true
           type: string
+
+        - name: token
+          in: body
+          description: 用户登录后在B方的有效标识
+          required: true
+          type: object
+          schema:
+            required:
+              - token
+            properties:
+              token:
+                type: string
+                description: 用户登录后在B方的有效标识
+          
           
       responses:
         "200":
@@ -196,7 +249,12 @@ paths:
         summary: 充值(转入)回调
         description: A方发起充值时传递回调地址,待B方处理完成后将处理结果通过回调地址发送给A方,若B方回调时没有收到成功响应，需重试直至成功响应;
         parameters:
-
+          - name: auth_id
+            in: header
+            description: 认证编号,见文档头部信息说明
+            type: string
+            required: true
+            
           - name: cryptograph
             in: header
             description: 根据参数值加密后的密文，加密算法参见文档头部描述; 若响应失败B方可一直重试直到成功,A方会根据订单编号排重,同一订单号只会成功处理一次;
@@ -284,7 +342,7 @@ paths:
             schema:
               $ref: '#/definitions/ErrorResponse'
   /b/member/token/{token}:
-      get:
+      post:
         tags:
           - B方提供
         summary: sso校验及会员信息获取
